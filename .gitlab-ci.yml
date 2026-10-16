@@ -1,0 +1,51 @@
+workflow:
+  rules:
+    # The usual pair: run for a merge request, and for a branch with no merge request open.
+    # Without the middle rule a branch with an open MR runs the pipeline twice.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+default:
+  interruptible: true
+  before_script:
+    # nix evaluates this repo as a git tree, and git refuses to read one it
+    # believes belongs to another user. That does not fail the job — it quietly
+    # degrades the flake to a plain directory copy, node_modules and all.
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - nix --version
+
+stages:
+  - verify
+  - browser
+
+# Everything runs on the nix runner, where the toolchain is the flake's: node,
+# pnpm, electron and xvfb all come out of the store. Nothing is apt-installed,
+# no browser is downloaded, and there is no cache to archive — the dev shell is
+# the environment and `nix build` is the build.
+
+check:flake:
+  stage: verify
+  tags: [nix]
+  script:
+    # Builds the package and runs the unit suite as its check phase, so this is
+    # the job that would notice a broken host list or retry policy.
+    - nix flake check --print-build-logs
+
+check:types:
+  stage: verify
+  tags: [nix]
+  script:
+    # `nix flake check` typechecks src/ incidentally (tsc *is* the build), and
+    # vitest transpiles without reading types, so tests/ is only checked here.
+    - nix develop -c sh -c 'pnpm install --frozen-lockfile && pnpm typecheck'
+
+test:e2e:
+  stage: browser
+  tags: [nix]
+  script:
+    # The dev shell exports DSH_ELECTRON, so the suite drives the electron nix
+    # provides rather than the devDependency, which ships no binary. xvfb-run is
+    # the display: the runner has no X server, and the lab's is not ours to use.
+    - nix develop -c sh -c 'pnpm install --frozen-lockfile && xvfb-run -a pnpm test:e2e'

@@ -1,0 +1,22 @@
+{
+  "name": "dsh-chrome",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DeepSeek Harness web GUI in its own window",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc && cp src/renderer/*.html dist/renderer/ && { test ! -f icon.png || cp icon.png dist/renderer/; }",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json",
+    "start": "pnpm run build && electron .",
+    "test": "vitest run tests/unit",
+    "test:e2e": "pnpm run build && vitest run --no-file-parallelism --testTimeout=120000 tests/e2e"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "electron": "43.6.0",
+    "playwright-core": "^1.64.0",
+    "typescript": "^5",
+    "vitest": "^3"
+  }
+}

@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'self'"
+    />
+    <title>Hosts</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #151517;
+        --surface: #1b1b1c;
+        --fg: #f9fafb;
+        --muted: #cfd3d6;
+        --border: rgb(255 255 255 / 12%);
+        --hover: rgb(255 255 255 / 8%);
+        --accent: #4d6bfe;
+        --error: #f28b82;
+      }
+      /* The app pins its scheme to dark (see main.ts); follow it if that ever
+         becomes a choice again. */
+      @media (prefers-color-scheme: light) {
+        :root {
+          color-scheme: light;
+          --bg: #fff;
+          --surface: #f2f2f3;
+          --fg: #0f1115;
+          --muted: #61666b;
+          --border: rgb(0 0 0 / 10%);
+          --hover: rgb(0 0 0 / 6%);
+        }
+      }
+      body {
+        margin: 0;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        height: 100vh;
+        box-sizing: border-box;
+        background: var(--bg);
+        color: var(--fg);
+        font: 14px/1.5 system-ui, sans-serif;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      #error {
+        color: var(--error);
+      }
+      ul {
+        flex: 1 1 auto;
+        margin: 0;
+        padding: 0;
+        overflow-y: auto;
+        list-style: none;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--surface);
+      }
+      li {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.35rem 0.5rem;
+        border-bottom: 1px solid var(--border);
+      }
+      li:last-child {
+        border-bottom: none;
+      }
+      li span {
+        flex: 1 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      form {
+        display: flex;
+        gap: 0.5rem;
+      }
+      input {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 0.3rem 0.5rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--fg);
+        font: inherit;
+      }
+      button {
+        padding: 0.3rem 0.7rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--fg);
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover {
+        background: var(--hover);
+      }
+      button[kind="primary"] {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+      li button {
+        padding: 0 0.4rem;
+        font-size: 12px;
+      }
+      footer {
+        display: flex;
+        justify-content: flex-end;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Hosts</h1>
+    <p>
+      The combobox in the titlebar switches between these. A bare hostname is
+      reached over ssh, forwarding its <code>dsh web</code>; a URL is loaded
+      directly.
+    </p>
+
+    <ul id="list"></ul>
+
+    <form id="add">
+      <input
+        id="value"
+        type="text"
+        placeholder="jupiter.home.5kw.li"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button type="submit" kind="primary">Add</button>
+    </form>
+    <p id="error" hidden></p>
+
+    <footer><button id="done" type="button">Done</button></footer>
+
+    <script src="./settings.js"></script>
+  </body>
+</html>

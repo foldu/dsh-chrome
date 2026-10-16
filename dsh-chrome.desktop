@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=DeepSeek Harness
+Comment=DeepSeek Harness agent, in its own window
+Exec=dsh-chrome
+Icon=dsh-chrome
+Terminal=false
+Categories=Development;
+Keywords=agent;llm;ai;harness;
+StartupNotify=true
+StartupWMClass=dsh-chrome

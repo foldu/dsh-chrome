@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'self'"
+    />
+    <title>titlebar</title>
+    <style>
+      /* The harness' own neutral ramp, so the bar reads as part of the app. */
+      :root {
+        color-scheme: light dark;
+        --bg: #1b1b1c;
+        --fg: #f9fafb;
+        --surface: #2a2a2e;
+        --border: rgb(255 255 255 / 12%);
+        --hover: rgb(255 255 255 / 8%);
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f2f2f3;
+          --fg: #0f1115;
+          --surface: #fff;
+          --border: rgb(0 0 0 / 10%);
+          --hover: rgb(0 0 0 / 6%);
+        }
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0 0.35rem 0 0.6rem;
+        background: var(--bg);
+        color: var(--fg);
+        border-bottom: 1px solid var(--border);
+        font: 13px/1 system-ui, sans-serif;
+        /* The bar itself is not a drag region: only the mark and the title act
+           as the window-move handle, so anything added here stays clickable
+           without every new control having to opt out. */
+        user-select: none;
+      }
+      #mark,
+      #title {
+        -webkit-app-region: drag;
+      }
+      #mark {
+        width: 16px;
+        height: 16px;
+        flex: none;
+      }
+      /* The mark upstream ships for this bar is the white glyph, so flip it on
+         a light bar — the one place the app can actually follow the theme. */
+      @media (prefers-color-scheme: light) {
+        #mark {
+          filter: invert(1);
+        }
+      }
+      #title {
+        flex: 0 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .spacer {
+        flex: 1 1 auto;
+      }
+      select,
+      button {
+        -webkit-app-region: no-drag;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--surface);
+        color: var(--fg);
+        font: inherit;
+      }
+      select {
+        max-width: 14rem;
+        padding: 0.15rem 0.25rem;
+      }
+      button {
+        display: grid;
+        place-items: center;
+        width: 26px;
+        height: 22px;
+        padding: 0;
+      }
+      button:hover {
+        background: var(--hover);
+      }
+      #close:hover {
+        background: #c0392b;
+        color: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <img id="mark" src="icon.png" alt="" hidden />
+    <span id="title">DeepSeek Harness</span>
+    <div class="spacer"></div>
+
+    <!-- Which harness this window is showing: this machine, or a host the user
+         added in the settings dialog. -->
+    <select id="host" title="Harness host"></select>
+
+    <button id="settings" title="Hosts…">
+      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+        <path d="M1 3h8M1 7h8" stroke="currentColor" stroke-width="1.2" />
+        <circle cx="3.5" cy="3" r="1.6" fill="currentColor" />
+        <circle cx="6.5" cy="7" r="1.6" fill="currentColor" />
+      </svg>
+    </button>
+
+    <button id="minimize" title="Minimize">
+      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+        <path d="M1 5h8" stroke="currentColor" stroke-width="1.2" />
+      </svg>
+    </button>
+    <button id="maximize" title="Maximize">
+      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.2" />
+      </svg>
+    </button>
+    <button id="close" title="Close">
+      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+        <path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.2" />
+      </svg>
+    </button>
+
+    <script src="./titlebar.js"></script>
+  </body>
+</html>

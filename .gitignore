@@ -1,0 +1,8 @@
+node_modules/
+dist/
+# this project uses pnpm; a stray npm lockfile is noise
+package-lock.json
+*.tsbuildinfo
+# `nix build` output symlinks
+/result
+/result-*
