@@ -15,7 +15,15 @@ import { BrowserWindow, WebContentsView, app, ipcMain, nativeTheme, shell } from
 import { POLL_MS, dueForAttempt } from "./attach";
 import { LOCAL, entries, label, normalize, read, target, write, type StoredHosts } from "./hosts";
 import { channels, type HostList, type HostState } from "./ipc";
-import { localize, publishedPort, remoteServiceUrl, startTunnel, type Tunnel } from "./tunnel";
+import {
+  SshFailure,
+  agentSummary,
+  localize,
+  publishedPort,
+  remoteServiceUrl,
+  startTunnel,
+  type Tunnel,
+} from "./tunnel";
 
 // The harness UI is dark, and Chromium's own light/dark guess is unreliable on
 // this desktop — it decides from GTK3, which does not report the configured
@@ -53,15 +61,20 @@ let waiting = false;
 let attemptedAt = 0;
 /**
  * What the waiting page should explain: the plain wait, a forward coming up, the
- * far side wanting its launch token, why the last attempt failed, or a forward
- * that is up with nothing behind it.
+ * far side wanting its launch token, why the last attempt failed, a forward that
+ * is up with nothing behind it, or a host that refused this app's key.
  */
-type Note = { kind: "waiting" | "tunnel" | "token" | "error" | "lost"; message?: string };
+type Note = {
+  kind: "waiting" | "tunnel" | "token" | "error" | "lost" | "auth";
+  message?: string;
+  /** For `auth`: which agent this window's ssh used, and what it held. */
+  agent?: string;
+};
 let note: Note = { kind: "waiting" };
 
 /** Record a new explanation; the waiting page reloads when it changes. */
 function setNote(next: Note): void {
-  if (next.kind === note.kind && next.message === note.message) return;
+  if (next.kind === note.kind && next.message === note.message && next.agent === note.agent) return;
   note = next;
   // The waiting page is loaded once per state, so clear that to let it reload.
   waiting = false;
@@ -86,15 +99,25 @@ interface Session {
 let session: Session | null = null;
 let pending: string | null = null;
 /**
- * Why the last attempt for a target failed, and what to say about it, held for
- * `TUNNEL_RETRY_MS` so a broken host is not hammered. The note is kept, not just
- * the message: a forward can also be dropped for a stale token, which the
- * waiting screen explains differently from an unreachable host.
+ * Why the last attempt for a target failed, what to say about it, and when to
+ * try again. The note is kept, not just the message: a forward can be dropped
+ * for a stale token, an unreachable host or a refused key, and the waiting
+ * screen explains each differently.
  */
-let failed: { target: string; at: number; note: Note } | null = null;
+let failed: { target: string; until: number; note: Note } | null = null;
 
 /** How long before a target whose forward failed is tried again. */
 const TUNNEL_RETRY_MS = 15_000;
+
+/**
+ * A refused authentication is not retried on the ordinary cadence. The far side
+ * penalises every failed authentication (OpenSSH's PerSourcePenalties: 5 s
+ * each), so a reconnect attempt every 15 s would keep refreshing a block that
+ * also stops the user's own ssh — and it cannot succeed until a human unlocks an
+ * agent or fixes a key. One attempt a minute says so without becoming the
+ * problem.
+ */
+const AUTH_RETRY_MS = 60_000;
 
 const userData = (): string => app.getPath("userData");
 
@@ -114,8 +137,8 @@ async function serviceUrl(): Promise<string | null> {
  * forward can be lost goes through here, so the retry bookmark and the
  * explanation can never disagree.
  */
-function failFor(name: string, cause: Note): void {
-  failed = { target: name, at: Date.now(), note: cause };
+function failFor(name: string, cause: Note, retryMs = TUNNEL_RETRY_MS): void {
+  failed = { target: name, until: Date.now() + retryMs, note: cause };
   setNote(cause);
   shown = null;
 }
@@ -132,7 +155,7 @@ async function sshTargetUrl(name: string): Promise<string | null> {
     return null;
   }
   if (failed !== null && failed.target === name) {
-    if (Date.now() - failed.at < TUNNEL_RETRY_MS) {
+    if (Date.now() < failed.until) {
       setNote(failed.note);
       return null;
     }
@@ -171,7 +194,19 @@ async function sshTargetUrl(name: string): Promise<string | null> {
     return session.url;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    failFor(name, { kind: "error", message });
+    if (error instanceof SshFailure && error.kind === "auth") {
+      // A refused key is a human problem — a locked agent, or an agent that is
+      // not the one holding the key — so say which agent this window used, and
+      // stop retrying on the ordinary cadence: every attempt is another failed
+      // authentication the far side penalises.
+      failFor(
+        name,
+        { kind: "auth", message, agent: await agentSummary() },
+        AUTH_RETRY_MS,
+      );
+    } else {
+      failFor(name, { kind: "error", message });
+    }
     return null;
   } finally {
     pending = null;
@@ -247,7 +282,11 @@ async function showWaiting(): Promise<void> {
       query: {
         host: label(stored.selected),
         state: note.kind,
-        error: note.kind === "error" || note.kind === "lost" ? (note.message ?? "") : "",
+        error:
+          note.kind === "error" || note.kind === "lost" || note.kind === "auth"
+            ? (note.message ?? "")
+            : "",
+        agent: note.agent ?? "",
       },
     })
     .catch(() => {});

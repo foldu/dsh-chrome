@@ -1,13 +1,20 @@
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   REMOTE_PORT,
+  SshFailure,
+  classify,
   freePort,
   localize,
   portOpen,
   publishedPort,
   remoteArgs,
+  remoteServiceUrl,
   sshArgs,
+  sshMessage,
   statusRunning,
   urlFrom,
   urlSources,
@@ -145,6 +152,113 @@ describe("localize", () => {
     expect(localize("http://127.0.0.1:3090/prefix/?token=x", 4)).toBe(
       "http://127.0.0.1:4/prefix/?token=x",
     );
+  });
+});
+
+describe("classify", () => {
+  it("calls a refused key auth, which no other source can fix", () => {
+    expect(classify("barnabas@host: Permission denied (publickey).\n")).toBe("auth");
+    expect(classify("Received disconnect: Too many authentication failures")).toBe("auth");
+    expect(classify("Host key verification failed.")).toBe("auth");
+  });
+
+  it("calls a connection that cannot be made transport", () => {
+    expect(classify("ssh: connect to host h port 22: Connection refused")).toBe("transport");
+    expect(classify("kex_exchange_identification: read: Connection reset by peer")).toBe(
+      "transport",
+    );
+    expect(classify("ssh: Could not resolve hostname nope: Name or service not known")).toBe(
+      "transport",
+    );
+  });
+
+  it("leaves a command that ran and said nothing as remote, so the next source is tried", () => {
+    expect(classify("cat: /run/user/1000/dsh-web/url: No such file or directory")).toBe("remote");
+    expect(classify("Unit dsh-web.service could not be found.")).toBe("remote");
+    expect(classify("")).toBe("remote");
+  });
+});
+
+describe("sshMessage", () => {
+  it("drops the warning a pinned public key produces, keeping the real failure", () => {
+    const stderr = [
+      'Load key "/home/barnabas/.ssh/pubkeys/home.pub": invalid format',
+      "barnabas@jupiter.home.5kw.li: Permission denied (publickey).",
+    ].join("\n");
+    expect(sshMessage(stderr, "fallback")).toBe(
+      "barnabas@jupiter.home.5kw.li: Permission denied (publickey).",
+    );
+  });
+
+  it("still reports a private key that really is malformed", () => {
+    // Only the .pub form is the documented pinning trick; anything else is a
+    // broken key worth showing.
+    expect(sshMessage('Load key "/home/barnabas/.ssh/home": invalid format', "fallback")).toBe(
+      'Load key "/home/barnabas/.ssh/home": invalid format',
+    );
+  });
+
+  it("is the fallback when ssh said nothing", () => {
+    expect(sshMessage("  \n", "ssh host exited with 255")).toBe("ssh host exited with 255");
+  });
+});
+
+describe("remoteServiceUrl", () => {
+  /** A stand-in ssh that records each invocation and answers as told. */
+  async function fakeSsh(
+    script: string | ((paths: { dir: string; log: string }) => string),
+  ): Promise<{ dir: string; log: string; ssh: string }> {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "dsh-ssh-"));
+    const log = path.join(dir, "invocations");
+    const ssh = path.join(dir, "ssh");
+    const body = typeof script === "string" ? script : script({ dir, log });
+    await writeFile(ssh, `#!/bin/sh\necho "$@" >> "${log}"\n${body}\n`, { mode: 0o755 });
+    return { dir, log, ssh };
+  }
+
+  async function invocations(log: string): Promise<string[]> {
+    const text = await readFile(log, "utf8").catch(() => "");
+    return text.split("\n").filter((line) => line !== "");
+  }
+
+  it("stops at the first refused key instead of offering it from every source", async () => {
+    const { ssh, log } = await fakeSsh(
+      'echo "barnabas@host: Permission denied (publickey)." >&2\nexit 255',
+    );
+
+    await expect(remoteServiceUrl("host", ssh)).rejects.toMatchObject({
+      kind: "auth",
+      message: "barnabas@host: Permission denied (publickey).",
+    });
+    // The other two sources, and the forward, would fail exactly the same way —
+    // and each is another failed authentication the far side penalises.
+    expect(await invocations(log)).toHaveLength(1);
+  });
+
+  it("tries the next source when one channel simply has nothing to say", async () => {
+    // The first invocation is a source that has no URL to give (no runtime file);
+    // the second answers. The log has already recorded the invocation by then.
+    const { ssh, log } = await fakeSsh(
+      ({ log }) => `if [ "$(grep -c '' "${log}")" -le 1 ]; then
+  echo "cat: no such file or directory" >&2
+  exit 1
+fi
+echo "● dsh-web.service - DeepSeek Harness web GUI server"
+echo "     Active: active (running) since Fri 2026-10-09 22:00:00 CEST; 1s ago"
+echo "Oct 09 22:00:00 host dsh-web[1]: dsh web: http://127.0.0.1:3090/?token=abc"`,
+    );
+
+    await expect(remoteServiceUrl("host", ssh)).resolves.toBe("http://127.0.0.1:3090/?token=abc");
+    expect(await invocations(log)).toHaveLength(2);
+  });
+
+  it("does not retry a transport failure from a different source either", async () => {
+    const { ssh, log } = await fakeSsh(
+      'echo "ssh: connect to host host port 22: Connection refused" >&2\nexit 255',
+    );
+
+    await expect(remoteServiceUrl("host", ssh)).rejects.toBeInstanceOf(SshFailure);
+    expect(await invocations(log)).toHaveLength(1);
   });
 });
 

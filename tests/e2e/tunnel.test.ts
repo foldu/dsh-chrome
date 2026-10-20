@@ -168,7 +168,45 @@ test("says why when the forward cannot come up", async () => {
   await expect
     .poll(() => harness!.harness.textContent("body"), { timeout: 30_000 })
     .toContain("Permission denied (publickey).");
-  expect(await harness.harness.title()).toBe("Cannot reach locked.example");
+  // A refused key is not an unreachable host; the heading says which it was.
+  expect(await harness.harness.title()).toBe("Cannot authenticate to locked.example");
+});
+
+test("stops at the first refused key, and names the agent it used", async () => {
+  // What ssh prints with an IdentityFile that names a public key — the way a
+  // single identity is pinned — and a locked agent behind it. The warning is
+  // expected; the refusal is the part worth showing.
+  const dir = await mkdtemp(path.join(os.tmpdir(), "dsh-fake-ssh-"));
+  scratch = dir;
+  const log = path.join(dir, "invocations");
+  await writeFile(
+    path.join(dir, "ssh"),
+    `#!/bin/sh
+echo "$@" >> "${log}"
+echo 'Load key "/home/barnabas/.ssh/pubkeys/home.pub": invalid format' >&2
+echo "barnabas@jupiter.home.5kw.li: Permission denied (publickey)." >&2
+exit 255
+`,
+    { mode: 0o755 },
+  );
+
+  harness = await launch(undefined, { pathPrepend: dir });
+  await addAndSelect(harness, "jupiter.home.5kw.li");
+  await expect
+    .poll(() => harness!.harness.textContent("body"), { timeout: 30_000 })
+    .toContain("Permission denied (publickey).");
+
+  // The warning is noise, not the explanation.
+  const body = await harness.harness.textContent("body");
+  expect(body).not.toContain("invalid format");
+  // ...and the screen says which agent this window could reach, which is the
+  // difference between a locked agent and the wrong one.
+  expect(body).toContain("ssh agent");
+
+  // One failed authentication, not four: every extra source and the forward
+  // would fail identically, and each is another penalty the far side counts.
+  const calls = (await readFile(log, "utf8")).split("\n").filter((line) => line !== "");
+  expect(calls).toHaveLength(1);
 });
 
 /** The forwards ssh has been asked for, in order — empty before the first one. */

@@ -7,6 +7,7 @@
   const host = params.get("host") ?? "local";
   const state = params.get("state") ?? "waiting";
   const error = params.get("error") ?? "";
+  const agent = params.get("agent") ?? "";
   const local = host === "local";
   const heading = document.getElementById("heading") as HTMLHeadingElement;
   const detail = document.getElementById("detail") as HTMLParagraphElement;
@@ -48,6 +49,23 @@
       `Reconnecting to ${host}…`,
       error === "" ? "The forward was up, but nothing answered behind it." : error,
       "The window builds a fresh forward on its own.",
+    );
+    return;
+  }
+
+  if (state === "auth") {
+    // The host was reachable and ssh got as far as choosing a key, so this is
+    // not a network or a routing problem — it is that the key this window could
+    // reach was not one the host accepts. Which agent was used decides whether
+    // Bitwarden is locked, or whether the window is talking to a different agent
+    // than the one holding the key (a desktop session exports the keyring's
+    // socket, while the key may live in another agent's).
+    show(
+      `Cannot authenticate to ${host}`,
+      error === "" ? "The far side refused this window's ssh key." : error,
+      agent === ""
+        ? "Unlock your ssh agent; the window retries on its own every minute."
+        : `${agent} Unlock it, or start this window with the agent that holds the key — it retries on its own every minute.`,
     );
     return;
   }
