@@ -15,6 +15,7 @@ import { BrowserWindow, WebContentsView, app, ipcMain, nativeTheme, shell } from
 import { POLL_MS, dueForAttempt } from "./attach";
 import { LOCAL, entries, label, normalize, read, target, write, type StoredHosts } from "./hosts";
 import { channels, type HostList, type HostState } from "./ipc";
+import { navigatesInView } from "./links";
 import {
   SshFailure,
   agentSummary,
@@ -525,6 +526,17 @@ if (!app.requestSingleInstanceLock()) {
     content.webContents.setWindowOpenHandler(({ url }) => {
       void shell.openExternal(url);
       return { action: "deny" };
+    });
+
+    // ...and a plain link is an ordinary navigation rather than a window.open, so
+    // it arrives here instead. A scheme the view cannot serve — a `zed://ssh/
+    // <host>/<path>` URL in the agent's output, say — goes to the desktop's
+    // handler, which is how a remote project opens in the Zed running on *this*
+    // machine rather than the one on the host serving the page.
+    content.webContents.on("will-navigate", (event, url) => {
+      if (navigatesInView(url)) return;
+      event.preventDefault();
+      void shell.openExternal(url);
     });
 
     // A failed main-frame load means the target went away.
