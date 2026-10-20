@@ -3,7 +3,7 @@
 My take on a simple electron wrapper for dsh. Can connect to other hosts with dsh web running.
 Nothing more really.
 
----- SLOP LINE -----
+# From the fat blue fish
 
 ## Hosts
 
